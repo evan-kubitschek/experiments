@@ -15,7 +15,9 @@
       "Bash(ls transcripts/*.md)",
       "Bash(git add .gitignore export_fathom_transcripts.py analyze_transcripts.py md_to_docx.py transcript_to_notion.py extract_coaching_context.py draft_content.py client_domains.json business_profile/profile.md .claude/settings.local.json)",
       "Bash(git commit:*)",
-      "Bash(git add draft_content.py transcript_to_notion.py .claude/settings.local.json)"
+      "Bash(git add draft_content.py transcript_to_notion.py .claude/settings.local.json)",
+      "Bash(git add .gitignore)",
+      "Bash(git add .claude/settings.local.json)"
     ]
   }
 }
