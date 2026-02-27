@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developers.fathom.ai)",
+      "Bash(python:*)",
+      "Bash(dir /b \"C:\\\\Users\\\\evank\\\\experiments\\\\.claude\\\\worktrees\\\\clever-nash\\\\transcripts\\\\*.md\")",
+      "Bash(python3:*)",
+      "Bash(where:*)",
+      "Bash(pip show:*)",
+      "Bash(findstr:*)",
+      "Bash(pip install:*)",
+      "Bash(git status -u)",
+      "Bash(cat voice_samples/linkedin/*.txt)",
+      "Bash(cat voice_samples/newsletters/*.txt)",
+      "Bash(ls transcripts/*.md)",
+      "Bash(git add .gitignore export_fathom_transcripts.py analyze_transcripts.py md_to_docx.py transcript_to_notion.py extract_coaching_context.py draft_content.py client_domains.json business_profile/profile.md .claude/settings.local.json)"
+    ]
+  }
+}
