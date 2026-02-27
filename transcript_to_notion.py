@@ -294,13 +294,31 @@ def deduplicate_ideas(ideas: list[dict]) -> list[dict]:
     return unique
 
 
+MIN_TRANSCRIPT_CHARS = 2_000  # Skip transcripts shorter than this (admin/scheduling calls)
+
+
 def process_transcript(client: anthropic.Anthropic, transcript: dict,
                        system_prompt: str) -> list[dict]:
     """Send a transcript to Claude and extract content ideas."""
     text = transcript["text"]
+
+    # Skip tiny transcripts — they're almost always admin/scheduling calls
+    if len(text) < MIN_TRANSCRIPT_CHARS:
+        return []
+
     chunks = chunk_transcript(text)
 
     all_ideas: list[dict] = []
+
+    # Build cached system prompt — identical across all calls, so Anthropic
+    # caches it after the first request (~90% cost reduction on input tokens)
+    cached_system = [
+        {
+            "type": "text",
+            "text": system_prompt,
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
 
     for chunk_idx, chunk in enumerate(chunks):
         prefix = "Analyze this call transcript and extract content ideas using the MP3 framework. Return only valid JSON.\n\n---\n\n"
@@ -313,7 +331,7 @@ def process_transcript(client: anthropic.Anthropic, transcript: dict,
                 response = client.messages.create(
                     model=CLAUDE_MODEL,
                     max_tokens=8192,
-                    system=system_prompt,
+                    system=cached_system,
                     messages=[{"role": "user", "content": prefix + chunk}],
                 )
                 response_text = response.content[0].text

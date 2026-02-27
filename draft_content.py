@@ -125,6 +125,9 @@ Return a JSON object with these fields:
 # Loaders
 # ──────────────────────────────────────────────────────────────────────
 
+VOICE_SAMPLE_COUNT = 5  # Number of LinkedIn samples to include (saves ~4K tokens vs all 15)
+
+
 def load_voice_samples(content_type: str = "linkedin_post") -> str:
     """Load voice samples appropriate for the content type."""
     samples = []
@@ -140,9 +143,10 @@ def load_voice_samples(content_type: str = "linkedin_post") -> str:
     li_dir = SCRIPT_DIR / "voice_samples" / "linkedin"
     if li_dir.exists():
         li_files = sorted(li_dir.glob("*.txt"))
-        # For LinkedIn posts, use all. For newsletters, use a subset for voice reference
-        if content_type == "newsletter":
-            li_files = li_files[:5]  # Just a few for voice calibration
+        # Use a curated subset — 5 samples is enough for voice calibration
+        # and saves ~10K chars (~2.5K tokens) per call
+        if len(li_files) > VOICE_SAMPLE_COUNT:
+            li_files = li_files[:VOICE_SAMPLE_COUNT]
         for f in li_files:
             text = f.read_text(encoding="utf-8")
             samples.append(f"--- LINKEDIN POST: {f.stem} ---\n{text}")
@@ -189,31 +193,47 @@ def load_ideas(ideas_path: Path) -> list[dict]:
 # Drafting
 # ──────────────────────────────────────────────────────────────────────
 
-def draft_idea(client: anthropic.Anthropic, idea: dict, voice_samples: str,
-               business_context: str, business_profile: str,
+def build_cached_system(voice_samples: str, business_context: str,
+                        business_profile: str) -> list[dict]:
+    """Build a cached system prompt with all static context.
+
+    Prompt caching means the system prompt + profile + voice samples + business
+    context are sent once and cached. Subsequent calls only pay for the cache
+    read (~90% cheaper) instead of full input tokens. Only the content idea
+    (in the user message) varies per call.
+    """
+    static_context_parts = [DRAFTING_SYSTEM_PROMPT]
+
+    if business_profile:
+        static_context_parts.append(f"\n\n## BUSINESS PROFILE (PRIMARY ANCHOR)\n\n{business_profile}")
+
+    static_context_parts.append(f"\n\n## VOICE SAMPLES\n\n{voice_samples}")
+
+    if business_context:
+        static_context_parts.append(
+            f"\n\n## BUSINESS CONTEXT (POSITIONING REFERENCE ONLY — NOT A CONTENT SOURCE)\n\n"
+            f"Use this ONLY to understand how Evan talks about his business in service of clients. "
+            f"Do NOT use this as source material for the post.\n\n{business_context}"
+        )
+
+    return [
+        {
+            "type": "text",
+            "text": "\n".join(static_context_parts),
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+
+
+def draft_idea(client: anthropic.Anthropic, idea: dict,
+               cached_system: list[dict],
                content_type: str) -> dict | None:
     """Draft a single content piece from an idea."""
 
     idea_text = json.dumps(idea, indent=2)
 
-    # Business profile comes FIRST — it's the primary anchor
-    profile_section = f"""## BUSINESS PROFILE (PRIMARY ANCHOR)
-
-{business_profile}""" if business_profile else ""
-
-    user_message = f"""{profile_section}
-
-## VOICE SAMPLES
-
-{voice_samples}
-
-## BUSINESS CONTEXT (POSITIONING REFERENCE ONLY — NOT A CONTENT SOURCE)
-
-Use this ONLY to understand how Evan talks about his business in service of clients. Do NOT use this as source material for the post.
-
-{business_context if business_context else "(No business context brief available. Draft based on voice samples and content idea only.)"}
-
-## CONTENT IDEA TO DRAFT
+    # Only the content idea goes in the user message — everything else is cached
+    user_message = f"""## CONTENT IDEA TO DRAFT
 
 Content type to write: **{content_type}**
 
@@ -229,7 +249,7 @@ Write the full draft now. Return only valid JSON."""
             response = client.messages.create(
                 model=CLAUDE_MODEL,
                 max_tokens=4096,
-                system=DRAFTING_SYSTEM_PROMPT,
+                system=cached_system,
                 messages=[{"role": "user", "content": user_message}],
             )
             text = response.content[0].text.strip()
@@ -331,6 +351,12 @@ def main():
             print(f"  {i}. [{conf}/{cat}] {idea.get('title', 'Untitled')[:80]}")
         return
 
+    # Build cached system prompt — all static context gets cached after the
+    # first API call. Subsequent calls only pay for cache reads (~90% cheaper).
+    cached_system = build_cached_system(voice_samples, business_context, business_profile)
+    static_chars = sum(len(block["text"]) for block in cached_system)
+    print(f"  Cached system prompt: {static_chars:,} chars (cached after first call)")
+
     # Draft
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -345,7 +371,7 @@ def main():
         title = idea.get("title", "Untitled")[:60]
         print(f"\n  [{i}/{len(ideas)}] {title}...")
 
-        draft = draft_idea(client, idea, voice_samples, business_context, business_profile, args.content_type)
+        draft = draft_idea(client, idea, cached_system, args.content_type)
         if draft:
             draft["_source_idea"] = idea
             results.append(draft)
