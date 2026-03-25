@@ -15,13 +15,43 @@ Environment variables (can be set in .env):
 """
 
 import argparse
+import io
 import json
+import logging
 import os
 import re
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+
+class CreditExhaustedError(Exception):
+    """Raised when the Anthropic API key has no remaining credits."""
+
+
+# Fix Windows cp1252 console encoding for Unicode output
+if sys.stdout.encoding and sys.stdout.encoding.lower().startswith("cp"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+# File logger — always flushed, readable for progress checks
+_LOG_PATH = Path(__file__).parent / "output" / "pipeline.log"
+_LOG_PATH.parent.mkdir(exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    handlers=[
+        logging.FileHandler(_LOG_PATH, mode="w", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+log = logging.getLogger(__name__)
+
+
+def _print(msg: str = ""):
+    """Print to both console and log file with immediate flush."""
+    log.info(msg)
 
 import anthropic
 import requests
@@ -32,6 +62,7 @@ from dotenv import load_dotenv
 # ──────────────────────────────────────────────────────────────────────
 
 CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
+CLAUDE_DRAFT_MODEL = "claude-haiku-3-5-20241022"
 TRANSCRIPT_CHUNK_LIMIT = 100_000  # characters
 CHUNK_OVERLAP = 2_000
 ANTHROPIC_DELAY = 2.0  # seconds between API calls
@@ -50,7 +81,13 @@ MP3_SYSTEM_PROMPT = r"""You are a content strategist extracting LinkedIn content
 
 ## EVAN'S POSITIONING
 
-Evan's core thesis: Most B2B marketing operations failures stem from treating symptoms rather than addressing root infrastructure problems. Companies "automate chaos instead of fixing it." His methodology — the Tower of Power — emphasizes fixing people and process before implementing platform solutions.
+- **Business:** Revenue Operations consultancy specializing in foundational marketing operations for B2B tech companies.
+- **Core work:** HubSpot implementations, CRM integrations, lead scoring, attribution tracking, marketing automation — usually cleaning up inherited systems that lack documentation or governance.
+- **Philosophy:** Fix people and process before platform. Stop automating chaos.
+- **Signature framework:** The Tower of Power — five sequential foundational layers that must be built in order. Skipping layers is why things break.
+- **Audience:** Marketing leaders, RevOps managers, and founders at B2B tech companies (typically Series A-C) who are dealing with operational messes they inherited or created and need someone to fix the foundation before anything else works.
+- **Voice:** Authentic, anti-corporate, direct. Uses real client war stories. Doesn't sugarcoat. Talks like a person, not a brand. Comfortable with profanity when it lands. No jargon for jargon's sake. No LinkedIn-bro energy. No "Here's the thing..." or "Let me be honest..." cliches.
+- **Newsletter:** "The Ops Gap" — focused on the foundational operations problems nobody wants to talk about.
 
 **Tower of Power Layers (bottom-up foundation):**
 1. Database Health — Clean data, proper field architecture, deduplication, data governance
@@ -58,14 +95,6 @@ Evan's core thesis: Most B2B marketing operations failures stem from treating sy
 3. Customer Lifecycle — Defined stages, proper stage definitions, transition criteria
 4. Prioritization — Lead scoring, MQL/SQL definitions, routing logic
 5. Speed to Lead — Response time optimization, handoff automation, SLA enforcement
-
-**Evan's voice characteristics:**
-- Anti-corporate, direct, no-BS
-- Uses analogies and metaphors to explain technical concepts
-- Comfortable calling out industry dysfunction ("dumpster fire" situations)
-- Values "slow ambition" — sustainable growth over hustle culture
-- Contrarian to the "platform-first" approach the industry defaults to
-- Empathetic toward ops practitioners stuck cleaning up messes they didn't create
 
 **Evan's key themes:**
 - The "foundational operations gap" — invisible infrastructure problems that cause automation to fail
@@ -77,13 +106,93 @@ Evan's core thesis: Most B2B marketing operations failures stem from treating sy
 
 ## YOUR TASK
 
-Analyze the provided transcript and extract content ideas using the MP3 Framework:
+Analyze the provided transcript and extract content ideas using the MP3 Framework. Aim for a rough pillar mix of **40% Problem / 35% Process / 25% Proof** over time.
 
-**Market the Problem** — Content that articulates the pain, frustration, and emotional reality of broken marketing operations.
+---
 
-**Market the Process** — Content that shows how Evan thinks, diagnoses, and solves problems.
+### PILLAR 1: Market the Problem
 
-**Market the Proof** — Content that demonstrates results, transformation, or tangible progress.
+**Goal:** Show that you understand their pain better than they do. Meet them in the mess.
+
+**7 Content Angles for Problem Posts:**
+
+1. **Name silent struggles out loud.** Surface the thoughts your audience has but doesn't say — like "I don't even know what half these lifecycle stages mean, but they were here when I got here" or "We have 47 lead statuses and nobody can explain why."
+2. **Challenge accepted wisdom.** Push back on industry defaults — "Best practice says implement lead scoring immediately. Best practice is wrong if your database is full of garbage." Question the playbook.
+3. **Point out hidden costs.** Show the downstream damage of foundational neglect — wasted ad spend, broken attribution, sales blaming marketing, executives making decisions on bad data. Go beyond the obvious.
+4. **Identify false solutions.** Name the things companies try that don't work — buying another tool, hiring another agency, "just migrating to a new CRM." Explain why these are bandaids on a broken bone.
+5. **Articulate root causes.** Connect the dots between seemingly separate problems. Bad lead routing, inaccurate reporting, and low email deliverability often trace back to the same root: nobody fixed the database.
+6. **Frame future implications.** Where does the current path lead? Paint the picture of compounding operational debt — each shortcut today creates three problems next quarter.
+7. **Create permission.** Normalize the mess. "It's not your fault the last agency didn't document anything. But it is your problem now. Here's how to start." Remove shame. Make the first step feel possible.
+
+**Problem Post Checklist:**
+- Focuses on ONE specific problem, not a laundry list
+- Uses a specific example or scenario (not generic)
+- Shows empathy before offering direction
+- Goes beneath the surface symptom to the real issue
+- Ends with hope or a path forward (not just doom)
+
+---
+
+### PILLAR 2: Market the Process
+
+**Goal:** Show HOW you think and work. Make the invisible visible. Build buy-in before the sales call.
+
+**7 Content Angles for Process Posts:**
+
+1. **Show your decision filters.** "Here's how I evaluate whether a company's marketing ops is actually broken vs. just messy." Share the criteria you use to prioritize.
+2. **Share "how I think about X" posts.** "How I think about attribution when nobody has UTMs set up." These aren't how-tos — they're how-you-thinks. Show your reasoning, not just steps.
+3. **Break down your internal questions.** "When I'm auditing a HubSpot portal, the first three things I look at are..." Help the audience self-diagnose while demonstrating expertise.
+4. **Contrast your approach with others.** "Most consultants start with automation. I start with the database. Here's why." Sharpen your positioning by showing what makes your method different.
+5. **Open-source a small piece of your process.** Share a checklist, a diagnostic question, a simple framework. Give real value while reinforcing the larger Tower of Power methodology.
+6. **Debrief a client insight or turning point.** "On a call last week, a VP of Marketing said something that stopped me cold..." Use anonymized real moments that show how you think on your feet.
+7. **Share experiments and lessons.** "I tried building lead scoring before fixing lifecycle stages for a client. Here's what happened and why I'll never do it again." Show the learning loop.
+
+**Additional Process Content Ideas:**
+- Tower of Power deep dives: each layer broken vs. built right
+- Behind the scenes of a decision: why you fired a tool, changed a process, or pushed back on a client request
+- Client experiments: what they tried, what broke, how you course-corrected together
+- Frameworks and systems: checklists, diagnostic templates, workflow SOPs (anonymized)
+
+**Process Post Checklist:**
+- Reveals thinking, not just conclusions
+- Makes the work feel structured but not rigid
+- Connects back to a real problem the audience faces
+- Demonstrates expertise without being preachy
+- Gives the reader something they can reflect on or apply immediately
+
+---
+
+### PILLAR 3: Market the Proof
+
+**Goal:** Show that the transformation is real. Answer "will this work for me?" before they ask.
+
+**5 Content Formats for Proof Posts:**
+
+1. **Before/After examples.** Show the contrast: "Before: 47 lifecycle stages, no documentation, 30% email bounce rate. After: 5 clean stages, full playbook, 2.1% bounce rate." Collapse the timeline. Make the transformation visible.
+2. **Specific results with numbers.** Use real, specific numbers — not rounded marketing claims. "$62,000 engagement over 9 months" is more believable than "helped scale their ops." Odd numbers feel true. Connect metrics to outcomes that matter (pipeline, revenue, time saved).
+3. **Screenshot evidence.** Dashboard before/after, Slack messages from happy clients, HubSpot portal snapshots showing clean vs. chaotic setups. Raw and unpolished beats curated and perfect. Always get permission.
+4. **Client success stories.** Structure: The protagonist (relatable marketing leader), the struggle (inherited mess, no visibility), the turning point (your engagement), the transformation (specific results), the ripple effect (what changed beyond the immediate fix). Make the reader think "that's me."
+5. **Implementation examples.** Show how a framework or recommendation played out in reality. Walk through a specific decision, the options considered, and why you went the direction you did.
+
+**Proof Post Checklist:**
+- Includes specific, concrete details (not vague claims)
+- Ties results back to foundational methodology (Tower of Power)
+- Makes the reader see themselves in the story
+- Shows the messy middle, not just the polished outcome
+- Builds belief that transformation is possible for them too
+
+---
+
+## WHAT TO LOOK FOR IN TRANSCRIPTS
+
+When processing raw material, extract post ideas by looking for:
+
+- **Moments of surprise or friction** in client calls — things that made Evan pause or push back
+- **Patterns across clients** — the same mistake showing up in different companies
+- **Specific before/after transformations** — measurable changes from engagement work
+- **Counterintuitive insights** — things Evan knows that his audience doesn't expect
+- **Emotional moments** — frustration, relief, breakthrough, confusion — these are the hooks
+- **Myths or bad advice** being repeated in the market that Evan can challenge with real experience
 
 ## OUTPUT FORMAT
 
@@ -95,7 +204,7 @@ Return a JSON array of content ideas. Only extract ideas strong enough to become
     "mp3_category": "problem" | "process" | "proof",
     "title": "A compelling, specific content hook — should read like a LinkedIn post opening line.",
     "core_insight": "The key insight in 2-3 sentences.",
-    "content_angle": "How to frame this as content. Narrative structure and tension.",
+    "content_angle": "Which numbered angle from the pillar above, and how to frame it.",
     "hook_options": ["Option 1", "Option 2", "Option 3"],
     "supporting_evidence": "Specific anonymized example from the call.",
     "tower_layer": "database_health" | "segmentation" | "lifecycle" | "prioritization" | "speed_to_lead" | "general" | "cross_layer",
@@ -111,21 +220,22 @@ Return a JSON array of content ideas. Only extract ideas strong enough to become
 ## RULES
 
 1. **Anonymize everything.** Use descriptors like "a mid-market B2B SaaS company."
-2. **Prioritize specificity over generality.**
+2. **Prioritize specificity over generality.** Lead with specific scenarios, numbers, tools (HubSpot, Marketo, Salesforce), and job titles (VP of Marketing, RevOps Manager, Head of Demand Gen).
 3. **Capture Evan's actual voice** in quotable_moment.
-4. **Look for the problem behind the problem.**
+4. **The "five layers deeper" test.** For every problem idea, push past the surface symptom. If the first instinct is "their data is messy," ask why five times until you hit the root cause. That root cause is the idea.
 5. **Don't force ideas.** Return fewer or empty array for administrative calls.
 6. **Tag cross-layer insights.**
-7. **Favor "Market the Problem" slightly.**
+7. **Aim for 40% Problem / 35% Process / 25% Proof** across ideas.
 8. **Multiple content types per idea.**
 9. **TARGET AUDIENCE IS B2B TECH MARKETING LEADERS — NOT CONSULTANTS.** Frame everything for VPs of Marketing, CMOs, Heads of Marketing Ops, Directors of Demand Gen. Do NOT extract ideas aimed at consultants or freelancers.
-10. **Only extract post-worthy ideas.** Every idea must be strong enough for a standalone LinkedIn post."""
+10. **Only extract post-worthy ideas.** Every idea must be strong enough for a standalone LinkedIn post.
+11. **Use the pillar checklists above** to validate each idea before including it."""
 
 # ──────────────────────────────────────────────────────────────────────
 # Drafting system prompt
 # ──────────────────────────────────────────────────────────────────────
 
-DRAFTING_SYSTEM_PROMPT = """You are a ghostwriter for Evan Kubitschek, founder of Grow Rogue — a Revenue Operations consultancy specializing in foundational marketing operations for B2B tech companies.
+DRAFTING_SYSTEM_PROMPT = """You are a ghostwriter for Evan Kubitschek, founder of Grow Rogue — a Revenue Operations consultancy specializing in foundational marketing operations for B2B tech companies. His newsletter is called "The Ops Gap" — focused on the foundational operations problems nobody wants to talk about.
 
 You will be given:
 1. **BUSINESS PROFILE** — THE PRIMARY ANCHOR. Every draft must align with this profile.
@@ -135,26 +245,63 @@ You will be given:
 
 ## TARGET AUDIENCE — CRITICAL
 
-Evan's primary audience is **B2B tech marketing leaders** — VPs of Marketing, CMOs, Heads of Marketing Ops, Directors of Demand Gen, and RevOps leaders.
+Evan's primary audience is **B2B tech marketing leaders** — VPs of Marketing, CMOs, Heads of Marketing Ops, Directors of Demand Gen, and RevOps leaders at B2B tech companies (typically Series A-C).
 
 **Write TO these people, not to consultants, freelancers, or agency owners.**
 
 If an idea is fundamentally about consulting/freelancing and cannot be reframed for marketing leaders, return: {"skip": true, "reason": "..."}
 
-## YOUR TASK
+## POST GENERATION RULES
 
-Write a complete, publish-ready draft that:
-- Is built entirely around the CONTENT IDEA (from client calls)
-- Speaks directly to B2B tech marketing leaders
-- Sounds exactly like Evan — direct, slightly irreverent, technical but accessible
-- Uses the same formatting patterns as voice samples
+1. **Every post maps to exactly one pillar.** Problem, Process, or Proof.
+2. **Write in Evan's voice.** Direct, conversational, anti-corporate. Short sentences. Real talk. Profanity is fine when it lands naturally — don't force it. No LinkedIn-bro energy. No "Here's the thing..." or "Let me be honest..." cliches.
+3. **Lead with specificity.** Vague posts get vague engagement. Use real scenarios, real numbers, real tools (HubSpot, Marketo, Salesforce), and real job titles (VP of Marketing, RevOps Manager, Head of Demand Gen).
+4. **The "five layers deeper" test.** For every problem post, push past the surface symptom. If the first instinct is "their data is messy," ask why five times until you hit the root cause. That root cause is the post.
+5. **Show, don't pitch.** Never end with a CTA like "DM me to learn more." The post itself should demonstrate expertise. If people want to work with you, they'll find you. End with insight, not a sales pitch.
+6. **One idea per post.** Don't try to cover everything. Pick one angle and do it justice.
+7. **Use the Tower of Power as a recurring anchor.** Not every post needs to reference it explicitly, but the philosophy should be present — foundations first, sequential layers, people-process-platform order of operations.
+8. **Source material matters.** The best posts come from real client interactions, discovery calls, audit findings, and engagement war stories.
+
+## PILLAR QUALITY CHECKLISTS
+
+**Problem Post Checklist:**
+- Focuses on ONE specific problem, not a laundry list
+- Uses a specific example or scenario (not generic)
+- Shows empathy before offering direction
+- Goes beneath the surface symptom to the real issue
+- Ends with hope or a path forward (not just doom)
+
+**Process Post Checklist:**
+- Reveals thinking, not just conclusions
+- Makes the work feel structured but not rigid
+- Connects back to a real problem the audience faces
+- Demonstrates expertise without being preachy
+- Gives the reader something they can reflect on or apply immediately
+
+**Proof Post Checklist:**
+- Includes specific, concrete details (not vague claims)
+- Ties results back to foundational methodology (Tower of Power)
+- Makes the reader see themselves in the story
+- Shows the messy middle, not just the polished outcome
+- Builds belief that transformation is possible for them too
 
 ## EVAN'S VOICE RULES
 
-**Structure:** Hook opening → short paragraphs → emoji bullets (💸 ❌ 😐) → CTA or question
-**Tone:** Anti-corporate, no-BS, humor and metaphors, comfortable with mild profanity, empathetic
+**Structure:** Hook opening → short paragraphs → emoji bullets (💸 ❌ 😐) → closing insight or question
+**Tone:** Anti-corporate, no-BS, humor and metaphors, comfortable with profanity when it lands, empathetic toward ops practitioners stuck cleaning up messes they didn't create
 **Patterns:** Leads with anonymized client story, reveals problem behind the problem, natural Tower of Power references
 **Never:** Generic platitudes, "5 tips" listicles, corporate jargon, excessive hedging, "leverage" as a verb
+
+## WHAT NOT TO DO
+
+- No generic marketing advice that could come from anyone
+- No "5 tips to improve your marketing ops" listicles unless each tip is brutally specific
+- No thought leadership that doesn't lead back to a real problem, process, or proof point
+- No content that sounds like it was written by an AI trying to sound like a LinkedIn influencer
+- No "I'm so grateful" or humble-brag framing
+- No posts about posting (meta-content about content strategy)
+- No jargon walls — if you use a technical term, make sure the surrounding context makes it clear why someone should care
+- No CTAs like "DM me" or "link in comments" — end with insight, not a sales pitch
 
 ## OUTPUT FORMAT
 
@@ -172,10 +319,11 @@ Write a complete, publish-ready draft that:
 
 1. Match the voice samples exactly.
 2. Anonymize everything.
-3. LinkedIn posts: 200-500 words. Newsletters: 800-2000 words.
-4. Don't force the Tower of Power.
+3. LinkedIn posts: 150-300 words. Newsletters: 800-2000 words.
+4. Don't force the Tower of Power — let it emerge naturally.
 5. Use provided hook options or write a better one.
-6. Draft should be 95% done."""
+6. Draft should be 95% done.
+7. Validate your draft against the relevant pillar checklist above before returning."""
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -256,12 +404,24 @@ def parse_source_info(filepath: Path) -> tuple[str, str | None]:
     return stem.replace("_", " ").title(), None
 
 
+def _extract_fathom_url(text: str) -> str:
+    """Extract fathom_url from YAML frontmatter."""
+    m = re.search(r"^fathom_url:\s*(.+)$", text, re.MULTILINE)
+    return m.group(1).strip() if m else ""
+
+
 def read_transcripts(transcripts_dir: Path) -> list[dict]:
     files = sorted(transcripts_dir.glob("*.md"))
-    return [
-        {"path": f, "text": f.read_text(encoding="utf-8"), **dict(zip(["source_call", "source_date"], parse_source_info(f)))}
-        for f in files
-    ]
+    results = []
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        source_call, source_date = parse_source_info(f)
+        results.append({
+            "path": f, "text": text,
+            "source_call": source_call, "source_date": source_date,
+            "fathom_url": _extract_fathom_url(text),
+        })
+    return results
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -376,16 +536,18 @@ def extract_ideas(api_client: anthropic.Anthropic, transcript: dict,
                 all_ideas.extend(extract_json_from_response(resp.content[0].text))
                 break
             except json.JSONDecodeError as e:
-                print(f"    Warning: JSON parse failed (attempt {attempt+1}): {e}")
+                _print(f"    Warning: JSON parse failed (attempt {attempt+1}): {e}")
                 if attempt == 2:
-                    print(f"    Skipping chunk after 3 failed attempts.")
+                    _print(f"    Skipping chunk after 3 failed attempts.")
             except anthropic.RateLimitError:
                 time.sleep(2 ** (attempt + 2))
             except anthropic.APIError as e:
-                print(f"    API error (attempt {attempt+1}): {e}")
+                if "credit balance is too low" in str(e):
+                    raise CreditExhaustedError(str(e))
+                _print(f"    API error (attempt {attempt+1}): {e}")
                 time.sleep(2 ** (attempt + 1))
                 if attempt == 2:
-                    print(f"    Skipping chunk after 3 failed attempts.")
+                    _print(f"    Skipping chunk after 3 failed attempts.")
 
         if ci < len(chunks) - 1:
             time.sleep(ANTHROPIC_DELAY)
@@ -397,6 +559,7 @@ def extract_ideas(api_client: anthropic.Anthropic, transcript: dict,
         idea["_source_call"] = transcript["source_call"]
         idea["_source_date"] = transcript["source_date"]
         idea["_source_file"] = transcript["path"].name
+        idea["_fathom_url"] = transcript.get("fathom_url", "")
 
     return all_ideas
 
@@ -413,7 +576,7 @@ def draft_idea(api_client: anthropic.Anthropic, idea: dict,
     for attempt in range(3):
         try:
             resp = api_client.messages.create(
-                model=CLAUDE_MODEL, max_tokens=4096, system=cached_system,
+                model=CLAUDE_DRAFT_MODEL, max_tokens=4096, system=cached_system,
                 messages=[{"role": "user", "content": user_msg}],
             )
             result = extract_draft_json(resp.content[0].text)
@@ -421,13 +584,15 @@ def draft_idea(api_client: anthropic.Anthropic, idea: dict,
                 return None
             return result
         except json.JSONDecodeError as e:
-            print(f"      Warning: Draft parse failed (attempt {attempt+1}): {e}")
+            _print(f"      Warning: Draft parse failed (attempt {attempt+1}): {e}")
             if attempt == 2:
                 return None
         except anthropic.RateLimitError:
             time.sleep(2 ** (attempt + 2))
         except anthropic.APIError as e:
-            print(f"      API error: {e}")
+            if "credit balance is too low" in str(e):
+                raise CreditExhaustedError(str(e))
+            _print(f"      API error: {e}")
             if attempt == 2:
                 return None
             time.sleep(2 ** (attempt + 1))
@@ -443,13 +608,20 @@ def notion_headers(api_key: str) -> dict:
 
 
 def check_existing_source(notion_key: str, database_id: str, source_call: str) -> bool:
-    resp = requests.post(
-        f"{NOTION_API_BASE}/databases/{database_id}/query",
-        headers=notion_headers(notion_key),
-        json={"filter": {"property": "Source Call", "rich_text": {"equals": source_call}}},
-        timeout=30,
-    )
-    return resp.status_code == 200 and len(resp.json().get("results", [])) > 0
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                f"{NOTION_API_BASE}/databases/{database_id}/query",
+                headers=notion_headers(notion_key),
+                json={"filter": {"property": "Source Call", "rich_text": {"equals": source_call}}},
+                timeout=30,
+            )
+            return resp.status_code == 200 and len(resp.json().get("results", [])) > 0
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            if attempt == 2:
+                _print(f"    Notion query timeout after 3 attempts: {e}")
+                return False
+            time.sleep(2 ** (attempt + 1))
 
 
 NOTION_TEXT_LIMIT = 1900  # Notion limit is 2000 but leave margin for Unicode
@@ -532,16 +704,30 @@ def create_notion_page(notion_key: str, database_id: str,
         properties["Content Types"] = {"multi_select": ctypes}
     if idea.get("_source_date"):
         properties["Source Call Date"] = {"date": {"start": idea["_source_date"]}}
+    if idea.get("_fathom_url"):
+        properties["Fathom Recording"] = {"url": idea["_fathom_url"]}
 
-    resp = requests.post(
-        f"{NOTION_API_BASE}/pages",
-        headers=notion_headers(notion_key),
-        json={"parent": {"database_id": database_id}, "properties": properties, "children": build_page_body(idea, draft)},
-        timeout=30,
-    )
-    if resp.status_code == 200:
-        return resp.json().get("url", "OK")
-    print(f"    Notion error {resp.status_code}: {resp.text[:300].encode('ascii', 'replace').decode()}")
+    body = {"parent": {"database_id": database_id}, "properties": properties, "children": build_page_body(idea, draft)}
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                f"{NOTION_API_BASE}/pages",
+                headers=notion_headers(notion_key),
+                json=body,
+                timeout=60,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("url", "OK")
+            _print(f"    Notion error {resp.status_code}: {resp.text[:300].encode('ascii', 'replace').decode()}")
+            if resp.status_code == 429:  # rate limited
+                time.sleep(2 ** (attempt + 1))
+                continue
+            return None
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            if attempt == 2:
+                _print(f"    Notion create timeout after 3 attempts: {e}")
+                return None
+            time.sleep(2 ** (attempt + 1))
     return None
 
 
@@ -559,6 +745,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Extract and draft but don't push to Notion")
     parser.add_argument("--extract-only", action="store_true", help="Extract ideas only, skip drafting")
     parser.add_argument("--limit", type=int, default=0, help="Process first N transcripts (0 = all)")
+    parser.add_argument("--offset", type=int, default=0, help="Skip first N transcripts")
     parser.add_argument("--min-confidence", choices=["high", "medium", "low"], default="high")
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--output-dir", default="./output")
@@ -569,16 +756,16 @@ def main():
     database_id = os.environ.get("NOTION_DATABASE_ID")
 
     if not anthropic_key:
-        print("Error: ANTHROPIC_API_KEY not set.", file=sys.stderr); sys.exit(1)
+        _print("Error: ANTHROPIC_API_KEY not set."); sys.exit(1)
     if not args.dry_run and not args.extract_only and (not notion_key or not database_id):
-        print("Error: NOTION_API_KEY and NOTION_DATABASE_ID required.", file=sys.stderr); sys.exit(1)
+        _print("Error: NOTION_API_KEY and NOTION_DATABASE_ID required."); sys.exit(1)
 
     # Load extraction prompt
     extraction_prompt = MP3_SYSTEM_PROMPT
     if args.prompt_file:
         p = Path(args.prompt_file)
         if not p.exists():
-            print(f"Error: {p} not found.", file=sys.stderr); sys.exit(1)
+            _print(f"Error: {p} not found."); sys.exit(1)
         raw = p.read_text(encoding="utf-8")
         m = re.search(r"```\n(.*?)\n```", raw, re.DOTALL)
         extraction_prompt = m.group(1) if m else raw
@@ -586,15 +773,15 @@ def main():
     # Load shared resources
     bp = load_business_profile()
     if bp:
-        print(f"Business profile: {len(bp):,} chars")
+        _print(f"Business profile: {len(bp):,} chars")
 
     cached_extraction = build_extraction_system(extraction_prompt, bp)
 
     vs = load_voice_samples(args.content_type)
     bc = load_business_context()
     cached_drafting = build_drafting_system(vs, bc, bp)
-    print(f"Voice samples: {len(vs):,} chars | Business context: {len(bc):,} chars")
-    print(f"Drafting prompt: {sum(len(b['text']) for b in cached_drafting):,} chars (cached)")
+    _print(f"Voice samples: {len(vs):,} chars | Business context: {len(bc):,} chars")
+    _print(f"Drafting prompt: {sum(len(b['text']) for b in cached_drafting):,} chars (cached)")
 
     conf_rank = {"high": 3, "medium": 2, "low": 1}
     min_rank = conf_rank[args.min_confidence]
@@ -602,12 +789,15 @@ def main():
     # Read transcripts
     tdir = Path(args.transcripts_dir)
     if not tdir.exists():
-        print(f"Error: {tdir} not found.", file=sys.stderr); sys.exit(1)
+        _print(f"Error: {tdir} not found."); sys.exit(1)
     transcripts = read_transcripts(tdir)
+    if args.offset > 0:
+        transcripts = transcripts[args.offset:]
     if args.limit > 0:
         transcripts = transcripts[:args.limit]
 
-    print(f"\n{len(transcripts)} transcripts to process" +
+    _print(f"\n{len(transcripts)} transcripts to process" +
+          (f" (offset {args.offset})" if args.offset else "") +
           (" (DRY RUN)" if args.dry_run else "") +
           (" (EXTRACT ONLY)" if args.extract_only else "") + "\n")
 
@@ -625,19 +815,30 @@ def main():
     for idx, tx in enumerate(transcripts, 1):
         fname = tx["path"].name
         s["tx"] += 1
-        print(f"[{idx}/{len(transcripts)}] {fname}")
+        _print(f"[{idx}/{len(transcripts)}] {fname}")
+
+        # Early skip: check Notion before burning API tokens
+        if args.skip_existing and not args.dry_run and not args.extract_only:
+            src = tx.get("source_call", "")
+            if src and check_existing_source(notion_key, database_id, src):
+                _print(f"  -> Skipped (already in Notion)")
+                s["notion_skip"] += 1
+                continue
 
         # Step 1: Extract
         try:
             ideas = extract_ideas(api_client, tx, cached_extraction)
+        except CreditExhaustedError:
+            _print(f"  STOPPING: Anthropic API credits exhausted. Top up at console.anthropic.com")
+            break
         except Exception as e:
-            print(f"  ERROR: {e}"); s["err"] += 1; continue
+            _print(f"  ERROR: {e}"); s["err"] += 1; continue
 
         if not ideas:
             if len(tx["text"]) < MIN_TRANSCRIPT_CHARS:
-                print(f"  -> Skipped (too short)"); s["skip_tiny"] += 1
+                _print(f"  -> Skipped (too short)"); s["skip_tiny"] += 1
             else:
-                print(f"  -> 0 ideas"); s["skip_empty"] += 1
+                _print(f"  -> 0 ideas"); s["skip_empty"] += 1
             continue
 
         for i in ideas:
@@ -652,7 +853,7 @@ def main():
         cat_str = ", ".join(f"{sum(1 for i in ideas if i.get('mp3_category')==c)} {c}"
                            for c in ["problem", "process", "proof"]
                            if any(i.get("mp3_category")==c for i in ideas))
-        print(f"  -> {len(ideas)} ideas ({cat_str}), {len(worthy)} post-worthy" +
+        _print(f"  -> {len(ideas)} ideas ({cat_str}), {len(worthy)} post-worthy" +
               (f", {dropped} below {args.min_confidence}" if dropped else ""))
 
         if args.extract_only:
@@ -663,31 +864,31 @@ def main():
 
         # Step 3: Draft + Step 4: Notion
         tx_results = []
+        credits_exhausted = False
         for idea in worthy:
             title = idea.get("title", "Untitled")[:60]
-            print(f"    Drafting: {title}...")
+            _print(f"    Drafting: {title}...")
 
-            draft = draft_idea(api_client, idea, cached_drafting, args.content_type)
+            try:
+                draft = draft_idea(api_client, idea, cached_drafting, args.content_type)
+            except CreditExhaustedError:
+                _print(f"      STOPPING: Anthropic API credits exhausted. Top up at console.anthropic.com")
+                credits_exhausted = True
+                break
             if draft is None:
                 s["skip_aud"] += 1
-                print(f"      -> Skipped (not suitable or failed)")
+                _print(f"      -> Skipped (not suitable or failed)")
                 continue
 
             s["drafted"] += 1
-            print(f"      -> Drafted ({draft.get('word_count', '?')} words)")
+            _print(f"      -> Drafted ({draft.get('word_count', '?')} words)")
 
             if not args.dry_run:
-                if args.skip_existing:
-                    src = idea.get("_source_call", "")
-                    if src and check_existing_source(notion_key, database_id, src):
-                        s["notion_skip"] += 1
-                        print(f"      -> Notion: skipped (exists)"); time.sleep(NOTION_DELAY); continue
-
                 url = create_notion_page(notion_key, database_id, idea, draft)
                 if url:
-                    s["notion_ok"] += 1; print(f"      -> Notion: created")
+                    s["notion_ok"] += 1; _print(f"      -> Notion: created")
                 else:
-                    s["notion_err"] += 1; print(f"      -> Notion: FAILED")
+                    s["notion_err"] += 1; _print(f"      -> Notion: FAILED")
                 time.sleep(NOTION_DELAY)
 
             tx_results.append({"idea": idea, "draft": draft})
@@ -698,6 +899,9 @@ def main():
                             "ideas": [r["idea"] for r in tx_results],
                             "drafts": [r["draft"] for r in tx_results]})
 
+        if credits_exhausted:
+            break
+
         if idx < len(transcripts):
             time.sleep(ANTHROPIC_DELAY)
 
@@ -706,7 +910,7 @@ def main():
     backup = output_dir / f"pipeline_{ts}.json"
     with open(backup, "w", encoding="utf-8") as f:
         json.dump(all_results, f, indent=2, ensure_ascii=False)
-    print(f"\nBackup: {backup}")
+    _print(f"\nBackup: {backup}")
 
     # Save markdown drafts
     if not args.extract_only:
@@ -724,19 +928,19 @@ def main():
                     f"**Editing notes:** {d.get('editing_notes','None')}\n", encoding="utf-8")
 
     # Summary
-    print(f"\n{'='*60}")
-    print(f" PIPELINE SUMMARY")
-    print(f"{'='*60}")
-    print(f" Transcripts: {s['tx']}  (skipped: {s['skip_tiny']} tiny, {s['skip_empty']} empty, {s['err']} errors)")
-    print(f" Ideas: {s['ideas']}  (problem: {s['cat'].get('problem',0)}, process: {s['cat'].get('process',0)}, proof: {s['cat'].get('proof',0)})")
-    print(f" Below confidence: {s['skip_conf']}")
+    _print(f"\n{'='*60}")
+    _print(f" PIPELINE SUMMARY")
+    _print(f"{'='*60}")
+    _print(f" Transcripts: {s['tx']}  (skipped: {s['skip_tiny']} tiny, {s['skip_empty']} empty, {s['err']} errors)")
+    _print(f" Ideas: {s['ideas']}  (problem: {s['cat'].get('problem',0)}, process: {s['cat'].get('process',0)}, proof: {s['cat'].get('proof',0)})")
+    _print(f" Below confidence: {s['skip_conf']}")
     if not args.extract_only:
-        print(f" Drafts: {s['drafted']}  (skipped: {s['skip_aud']} audience/fail)")
+        _print(f" Drafts: {s['drafted']}  (skipped: {s['skip_aud']} audience/fail)")
     if not args.dry_run and not args.extract_only:
-        print(f" Notion: {s['notion_ok']} created" +
+        _print(f" Notion: {s['notion_ok']} created" +
               (f", {s['notion_skip']} skipped" if s['notion_skip'] else "") +
               (f", {s['notion_err']} failed" if s['notion_err'] else ""))
-    print(f"{'='*60}")
+    _print(f"{'='*60}")
 
 
 if __name__ == "__main__":

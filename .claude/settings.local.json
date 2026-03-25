@@ -17,7 +17,12 @@
       "Bash(git commit:*)",
       "Bash(git add draft_content.py transcript_to_notion.py .claude/settings.local.json)",
       "Bash(git add .gitignore)",
-      "Bash(git add .claude/settings.local.json)"
+      "Bash(git add .claude/settings.local.json)",
+      "Bash(git add transcript_to_notion.py)",
+      "Bash(git push -u origin claude/clever-nash)",
+      "Bash(gh pr:*)",
+      "Bash(timeout 60 bash -c 'while [ ! -s \"\"C:\\\\Users\\\\evank\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-evank-experiments--claude-worktrees-clever-nash\\\\tasks\\\\b88efa3.output\"\" ]; do sleep 2; done; tail -20 \"\"C:\\\\Users\\\\evank\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-evank-experiments--claude-worktrees-clever-nash\\\\tasks\\\\b88efa3.output\"\"')",
+      "Bash(tee output/full_run.log)"
     ]
   }
 }
