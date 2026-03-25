@@ -62,7 +62,7 @@ from dotenv import load_dotenv
 # ──────────────────────────────────────────────────────────────────────
 
 CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
-CLAUDE_DRAFT_MODEL = "claude-haiku-3-5-20241022"
+CLAUDE_DRAFT_MODEL = "claude-sonnet-4-5-20250929"
 TRANSCRIPT_CHUNK_LIMIT = 100_000  # characters
 CHUNK_OVERLAP = 2_000
 ANTHROPIC_DELAY = 2.0  # seconds between API calls
