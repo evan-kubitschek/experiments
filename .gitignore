@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# Generated output
+output/
+
+# Data directories (private transcripts and voice samples)
+transcripts/
+coaching_transcripts/
+voice_samples/
+
+# Generated reports
+client_analysis.md
+client_analysis.docx
+
+# Python
+__pycache__/

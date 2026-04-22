@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developers.fathom.ai)",
+      "Bash(python:*)",
+      "Bash(dir /b \"C:\\\\Users\\\\evank\\\\experiments\\\\.claude\\\\worktrees\\\\clever-nash\\\\transcripts\\\\*.md\")",
+      "Bash(python3:*)",
+      "Bash(where:*)",
+      "Bash(pip show:*)",
+      "Bash(findstr:*)",
+      "Bash(pip install:*)",
+      "Bash(git status -u)",
+      "Bash(cat voice_samples/linkedin/*.txt)",
+      "Bash(cat voice_samples/newsletters/*.txt)",
+      "Bash(ls transcripts/*.md)",
+      "Bash(git add .gitignore export_fathom_transcripts.py analyze_transcripts.py md_to_docx.py transcript_to_notion.py extract_coaching_context.py draft_content.py client_domains.json business_profile/profile.md .claude/settings.local.json)",
+      "Bash(git commit:*)",
+      "Bash(git add draft_content.py transcript_to_notion.py .claude/settings.local.json)",
+      "Bash(git add .gitignore)",
+      "Bash(git add .claude/settings.local.json)",
+      "Bash(git add transcript_to_notion.py)",
+      "Bash(git push -u origin claude/clever-nash)",
+      "Bash(gh pr:*)",
+      "Bash(timeout 60 bash -c 'while [ ! -s \"\"C:\\\\Users\\\\evank\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-evank-experiments--claude-worktrees-clever-nash\\\\tasks\\\\b88efa3.output\"\" ]; do sleep 2; done; tail -20 \"\"C:\\\\Users\\\\evank\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-evank-experiments--claude-worktrees-clever-nash\\\\tasks\\\\b88efa3.output\"\"')",
+      "Bash(tee output/full_run.log)"
+    ]
+  }
+}
